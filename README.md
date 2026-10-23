@@ -24,7 +24,7 @@ A fast, lightweight, and modern web application that reverse-engineers any image
 ## 💻 Running Locally
 
 1. Make sure Python 3.11+ is installed.
-2. Open a terminal in this directory (`E:\New folder\TGA\whisk-ai`) and run:
+2. 
    ```bash
    python run.py
    ```
