@@ -177,7 +177,8 @@ document.addEventListener("DOMContentLoaded", () => {
   btnGenerate.addEventListener("click", async () => {
     if (!currentImageBase64) return;
 
-    const apiKey = localStorage.getItem("whisk_gemini_key") || null;
+    let apiKey = localStorage.getItem("whisk_gemini_key") || (inputApiKey ? inputApiKey.value.trim() : null) || null;
+    if (apiKey) apiKey = apiKey.trim();
     if (!serverHasKey && !apiKey) {
       openApiModal();
       return;
@@ -327,6 +328,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   btnApiKey.addEventListener("click", openApiModal);
   btnCloseModal.addEventListener("click", closeApiModal);
+  inputApiKey.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      btnSaveKey.click();
+    }
+  });
   apiModal.addEventListener("click", (e) => {
     if (e.target === apiModal) closeApiModal();
   });

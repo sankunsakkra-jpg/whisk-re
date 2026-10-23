@@ -2,16 +2,24 @@ import os
 import json
 import base64
 import re
+import traceback
 from pathlib import Path
 from typing import Optional, Dict, Any, List
-from fastapi import FastAPI, HTTPException, Body
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import httpx
 from dotenv import load_dotenv
 
-# Load local environment variables if available
+# Try importing google-genai
+try:
+    from google import genai
+    from google.genai import types
+    HAS_GENAI_SDK = True
+except ImportError:
+    HAS_GENAI_SDK = False
+
 load_dotenv()
 
 app = FastAPI(
@@ -20,7 +28,6 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Enable CORS for local testing & Vercel deployment
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -29,11 +36,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Models to attempt (in order of priority)
+# Prioritized list of Gemini multimodal models
 CANDIDATE_MODELS = [
-    "gemini-2.5-flash",
     "gemini-2.0-flash",
     "gemini-1.5-flash",
+    "gemini-2.5-flash",
     "gemini-3.8-flash"
 ]
 
@@ -68,13 +75,12 @@ Schema:
 """
 
 class DescribeRequest(BaseModel):
-    image: str  # Base64 string or data:image/...;base64,...
+    image: str
     api_key: Optional[str] = None
-    target_engine: Optional[str] = "imagen3"  # imagen3, midjourney, flux, general
-    detail_level: Optional[str] = "whisk_deep"  # whisk_deep, balanced
+    target_engine: Optional[str] = "imagen3"
+    detail_level: Optional[str] = "whisk_deep"
 
 def extract_base64_and_mime(image_str: str):
-    """Extracts raw base64 bytes and mime type from data URI or raw base64."""
     mime_type = "image/jpeg"
     if image_str.startswith("data:"):
         match = re.match(r"data:([^;]+);base64,(.+)", image_str)
@@ -86,19 +92,15 @@ def extract_base64_and_mime(image_str: str):
     else:
         b64_data = image_str
     
-    # Clean whitespace/newlines
     b64_data = re.sub(r"\s+", "", b64_data)
     return b64_data, mime_type
 
 def parse_model_json(raw_text: str) -> Dict[str, Any]:
-    """Cleans up and parses JSON response from Gemini."""
     cleaned = raw_text.strip()
-    # Strip markdown code blocks if present
     if cleaned.startswith("```"):
         cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
         cleaned = re.sub(r"\s*```$", "", cleaned)
     
-    # Try finding the first '{' and last '}'
     start_idx = cleaned.find("{")
     end_idx = cleaned.rfind("}")
     if start_idx != -1 and end_idx != -1:
@@ -107,7 +109,7 @@ def parse_model_json(raw_text: str) -> Dict[str, Any]:
     return json.loads(cleaned)
 
 async def call_gemini_api(api_key: str, b64_data: str, mime_type: str, target_engine: str):
-    """Calls Gemini REST API with fallback across model versions."""
+    api_key = api_key.strip()
     engine_tuning = {
         "imagen3": "Format the master prompt specifically for Google Imagen 3 (rich natural prose with descriptive photographic or artistic terminology).",
         "midjourney": "Format the master prompt optimized for Midjourney v6 (rich cinematic descriptors, camera and stylistic nuance).",
@@ -116,14 +118,41 @@ async def call_gemini_api(api_key: str, b64_data: str, mime_type: str, target_en
     }.get(target_engine, "Format the master prompt with rich natural language.")
 
     user_prompt = f"{WHISK_SYSTEM_PROMPT}\n\nTarget Generator Guidance: {engine_tuning}\n\nInspect the image and output the JSON."
+    image_bytes = base64.b64decode(b64_data)
 
-    payload = {
+    errors = []
+
+    # Method 1: Google GenAI SDK
+    if HAS_GENAI_SDK:
+        for model in CANDIDATE_MODELS:
+            try:
+                print(f"[Whisk AI] Attempting via SDK with model: {model}")
+                client = genai.Client(api_key=api_key)
+                part = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
+                response = client.models.generate_content(
+                    model=model,
+                    contents=[part, user_prompt],
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        temperature=0.2
+                    )
+                )
+                if response.text:
+                    print(f"[Whisk AI] Success with model: {model}")
+                    return parse_model_json(response.text)
+            except Exception as e:
+                err_msg = str(e)
+                print(f"[Whisk AI] SDK attempt failed for {model}: {err_msg}")
+                errors.append(f"{model} (SDK): {err_msg}")
+
+    # Method 2: Direct REST API (with correct camelCase inlineData & mimeType)
+    rest_payload = {
         "contents": [
             {
                 "parts": [
                     {
-                        "inline_data": {
-                            "mime_type": mime_type,
+                        "inlineData": {
+                            "mimeType": mime_type,
                             "data": b64_data
                         }
                     },
@@ -139,36 +168,38 @@ async def call_gemini_api(api_key: str, b64_data: str, mime_type: str, target_en
         }
     }
 
-    last_error = None
-    async with httpx.AsyncClient(timeout=45.0) as client:
+    async with httpx.AsyncClient(timeout=60.0) as http_client:
         for model in CANDIDATE_MODELS:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
             try:
-                response = await client.post(
+                print(f"[Whisk AI] Attempting via REST with model: {model}")
+                res = await http_client.post(
                     url,
-                    json=payload,
+                    json=rest_payload,
                     headers={"Content-Type": "application/json"}
                 )
-                if response.status_code == 200:
-                    data = response.json()
+                if res.status_code == 200:
+                    data = res.json()
                     candidates = data.get("candidates", [])
                     if candidates:
                         parts = candidates[0].get("content", {}).get("parts", [])
                         if parts:
-                            text_response = parts[0].get("text", "")
-                            return parse_model_json(text_response)
+                            print(f"[Whisk AI] REST Success with model: {model}")
+                            return parse_model_json(parts[0].get("text", ""))
                 else:
-                    error_data = response.text
-                    last_error = f"{model} returned HTTP {response.status_code}: {error_data}"
+                    err_text = res.text
+                    print(f"[Whisk AI] REST failed for {model} (HTTP {res.status_code}): {err_text}")
+                    errors.append(f"{model} (REST {res.status_code}): {err_text}")
             except Exception as e:
-                last_error = str(e)
-                continue
+                err_msg = str(e)
+                print(f"[Whisk AI] REST exception for {model}: {err_msg}")
+                errors.append(f"{model} (REST): {err_msg}")
 
-    raise HTTPException(status_code=500, detail=f"Failed to generate prompt from image: {last_error}")
+    summary_error = " | ".join(errors[:2]) if errors else "Unknown error"
+    raise HTTPException(status_code=400, detail=f"Gemini API Error: {summary_error}")
 
 @app.get("/api/status")
 async def get_status():
-    """Checks if server-side Gemini API key is configured."""
     has_env_key = bool(os.environ.get("GEMINI_API_KEY"))
     return {
         "status": "ready",
@@ -178,18 +209,17 @@ async def get_status():
 
 @app.post("/api/describe")
 async def describe_image(request: DescribeRequest):
-    """Processes uploaded image and returns Whisk-style reverse prompt."""
     api_key = request.api_key or os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise HTTPException(
             status_code=400,
-            detail="No Gemini API Key provided. Please enter your API key in the UI or set GEMINI_API_KEY in the server environment."
+            detail="No Gemini API Key provided. Click 'API Key' in the top right to paste your free key."
         )
 
     try:
         b64_data, mime_type = extract_base64_and_mime(request.image)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid image data: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Invalid image format: {str(e)}")
 
     result = await call_gemini_api(
         api_key=api_key,
@@ -200,7 +230,6 @@ async def describe_image(request: DescribeRequest):
 
     return result
 
-# Mount static frontend files if directory exists (for local development)
 static_path = Path(__file__).resolve().parent.parent / "public"
 if static_path.exists():
     app.mount("/", StaticFiles(directory=str(static_path), html=True), name="public")
