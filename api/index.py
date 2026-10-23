@@ -200,6 +200,7 @@ async def call_gemini_api(api_key: str, b64_data: str, mime_type: str, target_en
 
 @app.get("/api/status")
 @app.get("/status")
+@app.get("/")
 async def get_status():
     has_env_key = bool(os.environ.get("GEMINI_API_KEY"))
     return {
@@ -210,6 +211,7 @@ async def get_status():
 
 @app.post("/api/describe")
 @app.post("/describe")
+@app.post("/")
 async def describe_image(request: DescribeRequest):
     api_key = request.api_key or os.environ.get("GEMINI_API_KEY")
     if not api_key:
