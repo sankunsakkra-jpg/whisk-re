@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Whisk AI — Image to Reverse Prompt</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="ambient-glow glow-1"></div>
+  <div class="ambient-glow glow-2"></div>
+
+  <!-- Navigation / Header -->
+  <header class="navbar">
+    <div class="nav-brand">
+      <div class="brand-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="brand-text">
+        <span class="brand-title">Whisk AI</span>
+        <span class="brand-tag">Image to Prompt Studio</span>
+      </div>
+    </div>
+
+    <div class="nav-actions">
+      <div id="api-status-badge" class="status-pill checking">
+        <span class="dot"></span>
+        <span id="api-status-text">Checking API...</span>
+      </div>
+      <button id="btn-api-key" class="btn-ghost" title="Configure API Key">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+        </svg>
+        <span>API Key</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Hero & Model Tuning Bar -->
+  <main class="container">
+    <section class="hero-section">
+      <h1 class="hero-title">
+        Turn any image into a <span class="gradient-text">hyper-detailed prompt</span>
+      </h1>
+      <p class="hero-subtitle">
+        Deconstruct every micro-detail, lighting angle, texture, and aesthetic layer with Google Whisk's visual reverse-engineering framework.
+      </p>
+
+      <!-- Target Generator Selector -->
+      <div class="preset-selector">
+        <span class="selector-label">Target Generator:</span>
+        <div class="preset-pills">
+          <button class="preset-pill active" data-engine="imagen3">
+            <span class="engine-icon">✨</span> Google Imagen 3
+          </button>
+          <button class="preset-pill" data-engine="midjourney">
+            <span class="engine-icon">🎨</span> Midjourney v6
+          </button>
+          <button class="preset-pill" data-engine="flux">
+            <span class="engine-icon">⚡</span> Flux / SDXL
+          </button>
+          <button class="preset-pill" data-engine="general">
+            <span class="engine-icon">🌐</span> Universal
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Upload & Workspace Area -->
+    <section class="workspace-card">
+      <div id="dropzone" class="dropzone">
+        <input type="file" id="file-input" accept="image/*" class="file-hidden">
+        
+        <div class="dropzone-content">
+          <div class="upload-icon-wrapper">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+            </svg>
+          </div>
+          <p class="dropzone-title">Drag & drop your reference image here</p>
+          <p class="dropzone-sub">or <span class="browse-link">browse files</span> • Paste from clipboard (<kbd>Ctrl+V</kbd>)</p>
+          <div class="format-badges">
+            <span>PNG</span>
+            <span>JPG</span>
+            <span>WEBP</span>
+            <span>GIF</span>
+          </div>
+        </div>
+
+        <!-- Preview Overlay (hidden initially) -->
+        <div id="preview-container" class="preview-container hidden">
+          <img id="preview-img" src="" alt="Uploaded reference">
+          <div class="preview-meta">
+            <span id="preview-dimensions" class="badge">-- x --</span>
+            <span id="preview-filesize" class="badge">-- KB</span>
+          </div>
+          <button id="btn-remove-image" class="btn-icon-danger" title="Remove Image">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Action Button Area -->
+      <div class="action-bar">
+        <button id="btn-generate" class="btn-primary" disabled>
+          <span class="btn-text">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+            </svg>
+            Extract Whisk Prompt
+          </span>
+          <span class="spinner hidden"></span>
+        </button>
+      </div>
+
+      <!-- Live Loading State -->
+      <div id="loading-box" class="loading-box hidden">
+        <div class="progress-bar-container">
+          <div class="progress-bar-fill"></div>
+        </div>
+        <p id="loading-status-text" class="loading-status">Scanning visual layers...</p>
+      </div>
+    </section>
+
+    <!-- Results Section (hidden initially) -->
+    <section id="results-section" class="results-section hidden">
+      <!-- Master Prompt Card -->
+      <div class="result-card master-card">
+        <div class="card-header">
+          <div class="header-left">
+            <span class="card-badge primary">Master Synthesized Prompt</span>
+            <span id="prompt-char-count" class="meta-count">0 characters</span>
+          </div>
+          <div class="header-actions">
+            <button id="btn-copy-master" class="btn-action">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+              <span>Copy Master Prompt</span>
+            </button>
+          </div>
+        </div>
+        
+        <div class="prompt-editor-wrapper">
+          <textarea id="master-prompt-text" rows="5" placeholder="Your synthesized prompt will appear here..."></textarea>
+          <div class="edit-hint">💡 Editable: You can tweak words directly in the prompt box above before copying.</div>
+        </div>
+
+        <!-- Color Palette Swatches -->
+        <div id="palette-wrapper" class="palette-wrapper hidden">
+          <span class="palette-label">Extracted Color Palette:</span>
+          <div id="palette-swatches" class="palette-swatches"></div>
+        </div>
+      </div>
+
+      <!-- Quick Info Bar (Aspect Ratio + Negative) -->
+      <div class="quick-meta-bar">
+        <div class="meta-item">
+          <span class="meta-label">Aspect Ratio:</span>
+          <span id="aspect-ratio-val" class="meta-pill">1:1</span>
+        </div>
+        <div class="meta-item negative-container">
+          <span class="meta-label">Negative Prompt:</span>
+          <span id="negative-prompt-val" class="negative-text">--</span>
+          <button id="btn-copy-negative" class="btn-mini-copy" title="Copy Negative Prompt">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Whisk 6-Layer Breakdown Grid -->
+      <div class="breakdown-header">
+        <h2>Whisk Visual Layer Breakdown</h2>
+        <p>Granular architectural components extracted from your image</p>
+      </div>
+
+      <div class="breakdown-grid">
+        <!-- Subject Card -->
+        <div class="layer-card">
+          <div class="layer-header">
+            <div class="layer-title-group">
+              <span class="layer-icon">👤</span>
+              <h3>Subject & Micro-Details</h3>
+            </div>
+            <button class="btn-card-copy" data-target="breakdown-subject" title="Copy Subject">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+            </button>
+          </div>
+          <p id="breakdown-subject" class="layer-text"></p>
+        </div>
+
+        <!-- Scene Card -->
+        <div class="layer-card">
+          <div class="layer-header">
+            <div class="layer-title-group">
+              <span class="layer-icon">🏞️</span>
+              <h3>Scene & Environment</h3>
+            </div>
+            <button class="btn-card-copy" data-target="breakdown-scene" title="Copy Scene">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+            </button>
+          </div>
+          <p id="breakdown-scene" class="layer-text"></p>
+        </div>
+
+        <!-- Style Card -->
+        <div class="layer-card">
+          <div class="layer-header">
+            <div class="layer-title-group">
+              <span class="layer-icon">🎨</span>
+              <h3>Art Medium & Style</h3>
+            </div>
+            <button class="btn-card-copy" data-target="breakdown-style" title="Copy Style">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+            </button>
+          </div>
+          <p id="breakdown-style" class="layer-text"></p>
+        </div>
+
+        <!-- Lighting Card -->
+        <div class="layer-card">
+          <div class="layer-header">
+            <div class="layer-title-group">
+              <span class="layer-icon">💡</span>
+              <h3>Lighting & Atmosphere</h3>
+            </div>
+            <button class="btn-card-copy" data-target="breakdown-lighting" title="Copy Lighting">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+            </button>
+          </div>
+          <p id="breakdown-lighting" class="layer-text"></p>
+        </div>
+
+        <!-- Color Card -->
+        <div class="layer-card">
+          <div class="layer-header">
+            <div class="layer-title-group">
+              <span class="layer-icon">🌈</span>
+              <h3>Color Palette & Tonal Grading</h3>
+            </div>
+            <button class="btn-card-copy" data-target="breakdown-color" title="Copy Color">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+            </button>
+          </div>
+          <p id="breakdown-color" class="layer-text"></p>
+        </div>
+
+        <!-- Camera Card -->
+        <div class="layer-card">
+          <div class="layer-header">
+            <div class="layer-title-group">
+              <span class="layer-icon">📷</span>
+              <h3>Camera & Optics</h3>
+            </div>
+            <button class="btn-card-copy" data-target="breakdown-camera" title="Copy Camera">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+            </button>
+          </div>
+          <p id="breakdown-camera" class="layer-text"></p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- API Key Modal -->
+  <div id="api-modal" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Google Gemini API Configuration</h3>
+        <button id="btn-close-modal" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">
+          Get a free API key with 1,500 free daily requests from 
+          <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>. No credit card required.
+        </p>
+        <div class="input-group">
+          <label for="input-api-key">Gemini API Key</label>
+          <input type="password" id="input-api-key" placeholder="AIzaSy..." autocomplete="off">
+          <span class="input-hint">Your key is stored only in your local browser and never logged.</span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-clear-key" class="btn-ghost-danger">Clear Stored Key</button>
+        <button id="btn-save-key" class="btn-primary-sm">Save Key</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toast" class="toast hidden">Copied to clipboard!</div>
+
+  <footer class="app-footer">
+    <p>Inspired by Google Labs Whisk • Powered by Gemini Vision API • 100% Free Tier</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
