@@ -25,7 +25,8 @@ load_dotenv()
 app = FastAPI(
     title="Whisk AI - Image to Reverse Prompt",
     description="Deconstruct images into structured, ultra-detailed reverse prompts modeled after Google Whisk.",
-    version="1.0.0"
+    version="1.0.0",
+    redirect_slashes=False
 )
 
 app.add_middleware(
@@ -198,6 +199,7 @@ async def call_gemini_api(api_key: str, b64_data: str, mime_type: str, target_en
     raise HTTPException(status_code=400, detail=f"Gemini API Error: {summary_error}")
 
 @app.get("/api/status")
+@app.get("/status")
 async def get_status():
     has_env_key = bool(os.environ.get("GEMINI_API_KEY"))
     return {
@@ -207,6 +209,7 @@ async def get_status():
     }
 
 @app.post("/api/describe")
+@app.post("/describe")
 async def describe_image(request: DescribeRequest):
     api_key = request.api_key or os.environ.get("GEMINI_API_KEY")
     if not api_key:
