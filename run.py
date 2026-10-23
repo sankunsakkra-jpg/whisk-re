@@ -4,14 +4,21 @@ import threading
 import time
 import uvicorn
 
+# Ensure UTF-8 output on Windows consoles
+if sys.stdout.encoding != 'utf-8':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
 def open_browser():
     time.sleep(1.2)
     webbrowser.open("http://localhost:8000")
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("✨ Whisk AI - Image to Reverse Prompt Server")
-    print("🌐 Running at: http://localhost:8000")
+    print("Whisk AI - Image to Reverse Prompt Server")
+    print("Running at: http://localhost:8000")
     print("=" * 60)
     
     # Launch browser in a separate thread
