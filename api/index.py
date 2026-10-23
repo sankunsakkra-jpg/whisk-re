@@ -234,6 +234,8 @@ async def describe_image(request: DescribeRequest):
 
     return result
 
-static_path = Path(__file__).resolve().parent.parent / "public"
-if static_path.exists():
-    app.mount("/", StaticFiles(directory=str(static_path), html=True), name="public")
+# Only mount static files when running locally (Vercel automatically serves public/ via CDN)
+if not os.environ.get("VERCEL"):
+    static_path = Path(__file__).resolve().parent.parent / "public"
+    if static_path.exists():
+        app.mount("/", StaticFiles(directory=str(static_path), html=True), name="public")
