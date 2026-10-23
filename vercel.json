@@ -7,6 +7,14 @@
     {
       "source": "/api/status",
       "destination": "/api/status.py"
+    },
+    {
+      "source": "/describe",
+      "destination": "/api/describe.py"
+    },
+    {
+      "source": "/status",
+      "destination": "/api/status.py"
     }
   ]
 }

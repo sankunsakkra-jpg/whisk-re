@@ -63,13 +63,16 @@ document.addEventListener("DOMContentLoaded", () => {
   // 1. Check API Key Status on Startup
   async function checkApiStatus() {
     try {
-      const res = await fetch("/api/status");
+      let res = await fetch("/status");
+      if (!res.ok) {
+        res = await fetch("/api/status");
+      }
       if (res.ok) {
         const data = await res.json();
         serverHasKey = data.has_server_api_key;
       }
     } catch (e) {
-      console.warn("Could not reach /api/status", e);
+      console.warn("Could not reach status endpoint", e);
     }
 
     const localKey = localStorage.getItem("whisk_gemini_key");
@@ -188,16 +191,26 @@ document.addEventListener("DOMContentLoaded", () => {
     setLoading(true);
 
     try {
-      const response = await fetch("/api/describe", {
+      const payload = {
+        image: currentImageBase64,
+        api_key: apiKey,
+        target_engine: selectedEngine,
+        detail_level: "whisk_deep"
+      };
+
+      let response = await fetch("/describe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          image: currentImageBase64,
-          api_key: apiKey,
-          target_engine: selectedEngine,
-          detail_level: "whisk_deep"
-        })
+        body: JSON.stringify(payload)
       });
+
+      if (response.status === 404) {
+        response = await fetch("/api/describe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+      }
 
       if (!response.ok) {
         const err = await response.json();
