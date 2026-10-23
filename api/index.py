@@ -5,9 +5,9 @@ import re
 import traceback
 from pathlib import Path
 from typing import Optional, Dict, Any, List
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import httpx
 from dotenv import load_dotenv
@@ -198,10 +198,7 @@ async def call_gemini_api(api_key: str, b64_data: str, mime_type: str, target_en
     summary_error = " | ".join(errors[:2]) if errors else "Unknown error"
     raise HTTPException(status_code=400, detail=f"Gemini API Error: {summary_error}")
 
-@app.get("/api/status")
-@app.get("/status")
-@app.get("/")
-async def get_status():
+def build_status_response():
     has_env_key = bool(os.environ.get("GEMINI_API_KEY"))
     return {
         "status": "ready",
@@ -209,10 +206,7 @@ async def get_status():
         "models": CANDIDATE_MODELS
     }
 
-@app.post("/api/describe")
-@app.post("/describe")
-@app.post("/")
-async def describe_image(request: DescribeRequest):
+async def process_describe(request: DescribeRequest):
     api_key = request.api_key or os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise HTTPException(
@@ -234,8 +228,46 @@ async def describe_image(request: DescribeRequest):
 
     return result
 
-# Only mount static files when running locally (Vercel automatically serves public/ via CDN)
-if not os.environ.get("VERCEL"):
-    static_path = Path(__file__).resolve().parent.parent / "public"
-    if static_path.exists():
-        app.mount("/", StaticFiles(directory=str(static_path), html=True), name="public")
+# Explicit endpoints
+@app.get("/api/status")
+@app.get("/status")
+async def get_status():
+    return build_status_response()
+
+@app.post("/api/describe")
+@app.post("/describe")
+async def describe_image(request: DescribeRequest):
+    return await process_describe(request)
+
+# Catch-all router to guarantee zero 404s on any Vercel proxy/rewrite variation
+@app.api_route("/{full_path:path}", methods=["GET", "POST", "OPTIONS"])
+async def catch_all_router(request: Request, full_path: str = ""):
+    path = request.url.path.lower()
+    method = request.method.upper()
+
+    if method == "OPTIONS":
+        return JSONResponse({"status": "ok"})
+
+    if "status" in path:
+        return build_status_response()
+
+    if method == "POST" or "describe" in path:
+        body = await request.json()
+        req = DescribeRequest(**body)
+        return await process_describe(req)
+
+    # Local fallback for static files
+    if not os.environ.get("VERCEL"):
+        static_dir = Path(__file__).resolve().parent.parent / "public"
+        candidate = static_dir / full_path if full_path else static_dir / "index.html"
+        if candidate.is_file():
+            return FileResponse(candidate)
+        if (static_dir / "index.html").is_file():
+            return FileResponse(static_dir / "index.html")
+
+    return {
+        "status": "active",
+        "service": "Whisk AI API",
+        "path": path,
+        "models": CANDIDATE_MODELS
+    }
